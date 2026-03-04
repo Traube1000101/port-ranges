@@ -1,27 +1,39 @@
 use csv::ReaderBuilder;
+use reqwest::blocking::Client;
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::BufReader;
+
+static APP_USER_AGENT: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/",
+    env!("CARGO_PKG_VERSION"),
+    " (admin@heizu.dev)"
+);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::open("service-names-port-numbers.csv")?;
-    let mut rdr = ReaderBuilder::new()
+    println!("{}", APP_USER_AGENT);
+
+    let client = Client::builder().user_agent(APP_USER_AGENT).build()?;
+
+    let response = client
+    .get("https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv")
+    .send()?
+    .bytes()?;
+
+    let mut reader = ReaderBuilder::new()
         .has_headers(true)
-        .from_reader(BufReader::new(file));
+        .from_reader(response.as_ref());
 
     let mut assigned = BTreeSet::new();
 
-    for result in rdr.records() {
+    for result in reader.records() {
         let record = result?;
         let service = record.get(0).unwrap_or("").trim();
         let port_str = record.get(1).unwrap_or("").trim();
 
-        // Skip unassigned or empty
         if service.is_empty() || port_str == "Unassigned" {
             continue;
         }
 
-        // Parse port range
         if let Ok(port) = port_str.parse::<u16>() {
             assigned.insert(port);
         } else if let Some(pos) = port_str.find('-') {
@@ -36,7 +48,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Find gaps
     let mut gaps = Vec::new();
     let mut prev = 0u16;
 
@@ -50,7 +61,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gaps.push((prev + 1, 65535, (65535 - prev) as usize));
     }
 
-    // Sort by size
     gaps.sort_by(|a, b| b.2.cmp(&a.2));
 
     println!(
