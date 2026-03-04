@@ -52,5 +52,5 @@ jobs:
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
-          executable-name: ubi
+          executable-name: port-ranges
           target: ${{ matrix.platform.target }}
